@@ -1,7 +1,7 @@
 use std::{net::{TcpListener, TcpStream}, io::{Read, Write}, time::Instant, collections::HashMap};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError, method::Method}, Request, Response, ResponseEntity};
+use crate::model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError, method::Method}, Request, ResponseEntity};
 
 pub trait Handler {
     fn handle_request<T>(&mut self, request: &RequestObj<T>) -> ResponseObj<T> where T: Serialize + Deserialize<'static>;
@@ -63,17 +63,32 @@ impl<'s, Req> Server<Req>
 
                             let request_obj = buffer_to_request(&processed_buf);
                             let path = request_obj.path.clone();
+                            let method = request_obj.method.clone();
 
-                            let func = self.funcs.get(&Endpoint::new(request_obj.method, path));
+                            println!("Calling function for method {} and path {}", method, path);
+                            let func = self.funcs.get(&Endpoint::new(method.clone(), path.clone()));
+
                             match func {
                                 Some(f) => {
+                                    println!("Function found");
+
                                     let body = request_obj.body.clone();
                                     let return_obj = f(request_obj.headers, Request::string_body_to_obj(body.to_owned()));
+
+                                    println!("Received ResponseEntity, returning");
+
                                     return_obj.write(&mut stream);
+
+                                    println!("Elapsed time: {:?}", now.elapsed());
                                     continue;
                                 },
                                 None => {
+                                    println!("Function for method {} and path {} doesn't exist", method, path);
+                                    println!("Returning default 404 message");
+
                                     return_default_404(stream, &request_obj.path);
+
+                                    println!("Elapsed time: {:?}", now.elapsed());
                                     continue;
                                 },
                             }

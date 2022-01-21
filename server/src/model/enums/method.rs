@@ -1,6 +1,6 @@
-use std::str::FromStr;
+use std::{str::FromStr, fmt::Display};
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Method {
     GET,
     HEAD,
@@ -28,6 +28,22 @@ impl FromStr for Method {
             "TRACE" => Ok(Method::TRACE),
             "PATCH" => Ok(Method::PATCH),
             _ => Err(())
+        }
+    }
+}
+
+impl Display for Method {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Method::GET => write!(f, "GET"),
+            Method::HEAD => write!(f, "HEAD"),
+            Method::POST => write!(f, "POST"),
+            Method::PUT => write!(f, "PUT"),
+            Method::DELETE => write!(f, "DELETE"),
+            Method::CONNECT => write!(f, "CONNECT"),
+            Method::OPTIONS => write!(f, "OPTIONS"),
+            Method::TRACE => write!(f, "TRACE"),
+            Method::PATCH => write!(f, "PATCH"),
         }
     }
 }

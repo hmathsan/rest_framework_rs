@@ -9,7 +9,7 @@ fn main() {
     server.run();
 }
 
-fn test_get(headers: HashMap<String, String>, req: TestRequest) -> ResponseEntity {
+fn test_get(_headers: HashMap<String, String>, req: TestRequest) -> ResponseEntity {
     ResponseEntityBuilder::new()
         .with_body(TestResponse{ test: format!("O campo test do request é igual a {}", req.test) })
         .with_status_code(StatusCode::Ok)
