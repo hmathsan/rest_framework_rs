@@ -34,7 +34,7 @@ impl<T> Display for ResponseObj<T>
         };
         write!(
             f, "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\n\r\n{}",
-            self.status_code,
+            self.status_code.status_number(),
             self.status_code.reason_phrase(),
             json_body
         )
