@@ -1,7 +1,7 @@
 use std::{net::{TcpListener, TcpStream}, io::{Read, Write}, time::Instant, collections::HashMap};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError, method::Method}, Request, ResponseEntity};
+use crate::model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError, method::Method}, Request, response_entity::ResponseEntity};
 
 pub trait Handler {
     fn handle_request<T>(&mut self, request: &RequestObj<T>) -> ResponseObj<T> where T: Serialize + Deserialize<'static>;

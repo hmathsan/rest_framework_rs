@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use serde_derive::{Deserialize, Serialize};
-use server::{server::Server, model::{enums::{method::Method, status_code::StatusCode}, Request, Response, ResponseEntity, ResponseEntityBuilder}};
+use server::{server::Server, model::{enums::{method::Method, status_code::StatusCode}, Request, Response, response_entity::{ResponseEntityBuilder, ResponseEntity}}};
 
 fn main() {
     let mut server = Server::new("127.0.0.1:8080".to_string());
@@ -34,4 +34,8 @@ impl Request for TestRequest {
     }
 }
 
-impl Response for TestResponse { }
+impl Response for TestResponse {
+    fn to_string_json(&self) -> String {
+        serde_json::to_string_pretty(self.clone()).unwrap()
+    }
+}
