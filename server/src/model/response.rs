@@ -1,17 +1,17 @@
 use std::fmt::{Display, Formatter, Result};
 
-use serde::{Serialize};
+use serde::Serialize;
 
 use super::enums::status_code::StatusCode;
 
-pub struct Response<T> 
+pub struct ResponseObj<T> 
     where T: Serialize 
 {
     status_code: StatusCode,
     body: Option<T>
 }
 
-impl<T> Response<T> 
+impl<T> ResponseObj<T> 
     where T: Serialize 
 {
     pub fn new(status_code: StatusCode, body: Option<T>) -> Self {
@@ -22,7 +22,7 @@ impl<T> Response<T>
     }
 }
 
-impl<T> Display for Response<T> 
+impl<T> Display for ResponseObj<T> 
     where T: Serialize
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {

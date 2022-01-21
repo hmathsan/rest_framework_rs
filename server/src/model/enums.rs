@@ -1,2 +1,3 @@
 pub mod status_code;
-pub mod parse_error;
+pub(in crate) mod parse_error;
+pub mod method;

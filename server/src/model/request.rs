@@ -1,24 +1,29 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use serde::{Deserialize};
 
+use crate::model::enums::method::*;
+
 #[derive(Debug)]
-pub struct Request<T> where T: Deserialize<'static> {
-    path: String,
-    headers: HashMap<String, String>,
-    method: String,
-    body: T
+pub struct RequestObj<T> 
+    where T: Deserialize<'static> 
+{
+    pub path: String,
+    pub headers: HashMap<String, String>,
+    pub method: Method,
+    pub body: T
 }
 
-impl<T> Request<T> 
+impl<T> RequestObj<T> 
     where T: Deserialize<'static>
 {
-    pub fn new(path: String, method: String, headers: HashMap<String, String>, body: T) -> Self {
+    pub(in crate) fn new(path: String, method: String, headers: HashMap<String, String>, body: T) -> Self {
         Self {
             path,
             headers,
-            method,
+            method: Method::from_str(&method).unwrap(),
             body: body
         }
     }
+
 }

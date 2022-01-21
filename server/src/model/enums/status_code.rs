@@ -1,10 +1,12 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-#[derive(Clone, Copy, Debug)]
+use serde_derive::{Serialize, Deserialize};
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum StatusCode {
-    Ok = 200,
-    BadRequest = 400,
-    NotFound = 404
+    Ok,
+    BadRequest,
+    NotFound
 }
 
 impl StatusCode {
@@ -13,6 +15,14 @@ impl StatusCode {
             Self::Ok => "Ok",
             Self::BadRequest => "BadRequest",
             Self::NotFound => "NotFound"
+        }
+    }
+
+    pub fn status_number(&self) -> u16 {
+        match self {
+            StatusCode::Ok => 200,
+            StatusCode::BadRequest => 400,
+            StatusCode::NotFound => 404,
         }
     }
 }

@@ -1,29 +1,51 @@
-use std::{net::TcpListener, io::{Read, Write}, time::Instant, collections::HashMap};
+use std::{net::{TcpListener, TcpStream}, io::{Read, Write}, time::Instant, collections::HashMap};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError}};
+use crate::model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError, method::Method}, Request, Response, ResponseEntity};
 
 pub trait Handler {
-    fn handle_request<T>(&mut self, request: &Request<T>) -> Response<T> where T: Serialize + Deserialize<'static>;
+    fn handle_request<T>(&mut self, request: &RequestObj<T>) -> ResponseObj<T> where T: Serialize + Deserialize<'static>;
 
-    fn handle_bad_request<T>(&mut self, err: &ParseError) -> Response<T> where T: Serialize + Deserialize<'static> {
+    fn handle_bad_request<T>(&mut self, err: &ParseError) -> ResponseObj<T> where T: Serialize + Deserialize<'static> {
         println!("Failed to parse request: {}", err);
-        Response::new(StatusCode::BadRequest, None)
+        ResponseObj::new(StatusCode::BadRequest, None)
     }
 }
 
-pub struct Server {
-    addr: String
+#[derive(Hash, PartialEq, Eq)]
+pub(in crate) struct Endpoint {
+    method: Method,
+    path: String
 }
 
-impl Server {
+impl Endpoint {
+    fn new(method: Method, path: String) -> Self {
+        Self{ method, path }
+    }
+}
+
+pub struct Server<Req> 
+    where Req: Request
+{ 
+    pub(in crate) addr: String,
+    pub(in crate) funcs: HashMap<Endpoint, fn(HashMap<String, String>, Req) -> ResponseEntity>
+}
+
+impl<'s, Req> Server<Req> 
+    where Req: Request
+{
     pub fn new(addr: String) -> Self {
-        Self{ addr }
+        Self { addr, funcs: HashMap::new() }
+    }
+
+    pub fn mount(&mut self, method: Method, path: String, func: fn(HashMap<String, String>, Req) -> ResponseEntity) {
+        self.funcs.insert(Endpoint::new(method, path), func);
     }
 
     pub fn run(self) {
         println!("Listening to {}", self.addr);
 
+        // TODO: TcpListener for each endpoint?
         let listener = TcpListener::bind(&self.addr).unwrap();
 
         loop {
@@ -40,18 +62,22 @@ impl Server {
                             let processed_buf = process_buffer(&buffer);
 
                             let request_obj = buffer_to_request(&processed_buf);
+                            let path = request_obj.path.clone();
 
-                            if let Err(e) = write!(
-                                stream,
-                                "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\n\r\n{}",
-                                200,
-                                "Ok",
-                                "{\r\n\"Ok\": \"Ok\"\r\n}"
-                            ) {
-                                println!("Failed to send response: {}", e);
+                            let func = self.funcs.get(&Endpoint::new(request_obj.method, path));
+                            match func {
+                                Some(f) => {
+                                    let body = request_obj.body.clone();
+                                    let return_obj = f(request_obj.headers, Request::string_body_to_obj(body.to_owned()));
+                                    return_obj.write(&mut stream);
+                                    continue;
+                                },
+                                None => {
+                                    return_default_404(stream, &request_obj.path);
+                                    continue;
+                                },
                             }
 
-                            println!("Elapsed time: {:.2?}", now.elapsed());
                         },
                         Err(err) => {
                             println!("Failed to read from connection: {}", err);
@@ -64,6 +90,22 @@ impl Server {
                 },
             }
         }
+    }
+}
+
+fn return_default_404(mut stream: TcpStream, path: &String) {
+    let formated_body = format!("{{\r\n\t \"timestamp\": \"\",\t\"status\": 404,\t\"error\": \"Not Found\",\t\"path\": \"{path}\"}}",
+        
+    );
+
+    if let Err(e) = write!(
+        stream,
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\n\r\n{}",
+        StatusCode::NotFound.status_number(),
+        StatusCode::NotFound.reason_phrase(),
+        formated_body
+    ) {
+        println!("Failed to send response: {}", e);
     }
 }
 
@@ -121,7 +163,7 @@ fn process_buffer(buffer: &Vec<u8>) -> Vec<Vec<u8>> {
     return processed_vec;
 }
 
-fn buffer_to_request(processed_buf: &Vec<Vec<u8>>) -> Request<String> {
+fn buffer_to_request(processed_buf: &Vec<Vec<u8>>) -> RequestObj<String> {
     let mut path = String::new();
     let mut method = String::new();
     let headers: HashMap<String, String> = HashMap::new();
@@ -131,6 +173,13 @@ fn buffer_to_request(processed_buf: &Vec<Vec<u8>>) -> Request<String> {
 
     for (i, buf) in processed_buf.iter().enumerate() {
         
+        if i == processed_buf.len() - 1 {
+            let filtered_end: Vec<(usize, &u8)> = buf.iter().enumerate().filter(|(_i, f)| **f == 125 as u8).collect();
+            let last_index: usize = filtered_end.iter().last().unwrap().0;
+
+            body = String::from_utf8_lossy(&buf[0..last_index + 1]).to_string();
+        }
+
         if i == 0 {
             let str = String::from_utf8_lossy(buf);
 
@@ -152,13 +201,8 @@ fn buffer_to_request(processed_buf: &Vec<Vec<u8>>) -> Request<String> {
                     _ => {}
                 }
             })
-        } else {
-            let filtered: Vec<(usize, &u8)> = buf.iter().enumerate().filter(|(_i, f)| **f == 125 as u8).collect();
-            let last_index: usize = filtered.iter().last().unwrap().0;
-
-            body = String::from_utf8_lossy(&buf[i..last_index]).to_string();
         }
     }
 
-    Request::new(path, method, headers, body)
+    RequestObj::new(path, method, headers, body)
 }
