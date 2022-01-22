@@ -1,5 +1,6 @@
 pub mod server;
 pub mod model;
+pub(in crate) mod server_utils;
 
 #[cfg(test)]
 mod tests {

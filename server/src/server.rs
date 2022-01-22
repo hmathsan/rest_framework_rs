@@ -1,7 +1,8 @@
-use std::{net::{TcpListener, TcpStream}, io::{Read, Write}, time::Instant, collections::HashMap};
+use std::{net::TcpListener, io::Read, time::Instant, collections::HashMap};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError, method::Method}, Request, response_entity::ResponseEntity};
+use crate::{model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError, method::Method}, Request, response_entity::ResponseEntity}, server_utils::{return_default_404, process_buffer, buffer_to_request}};
 
 pub trait Handler {
     fn handle_request<T>(&mut self, request: &RequestObj<T>) -> ResponseObj<T> where T: Serialize + Deserialize<'static>;
@@ -12,15 +13,21 @@ pub trait Handler {
     }
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone)]
 pub(in crate) struct Endpoint {
     method: Method,
-    path: String
+    path: Vec<String>
 }
 
 impl Endpoint {
     fn new(method: Method, path: String) -> Self {
-        Self{ method, path }
+        let mut path_vec: Vec<String> = path.split("/").map(|p| p.to_string()).collect();
+
+        if path_vec.last().unwrap() == "" && path_vec.len() > 1 {
+            path_vec.remove(path_vec.len() - 1);
+        }
+
+        Self { method, path: path_vec }
     }
 }
 
@@ -28,9 +35,10 @@ pub struct Server<Req>
     where Req: Request
 { 
     pub(in crate) addr: String,
-    pub(in crate) funcs: HashMap<Endpoint, fn(HashMap<String, String>, Req) -> ResponseEntity>
+    pub(in crate) funcs: HashMap<Endpoint, fn(HashMap<String, String>, HashMap<String, String>, Req) -> ResponseEntity>
 }
 
+// TODO: add middleware support. Maybe have three macros, one for only a endpoint function, other for middleware and endpoint, and other for global middleware
 impl<'s, Req> Server<Req> 
     where Req: Request
 {
@@ -38,7 +46,7 @@ impl<'s, Req> Server<Req>
         Self { addr, funcs: HashMap::new() }
     }
 
-    pub fn mount(&mut self, method: Method, path: String, func: fn(HashMap<String, String>, Req) -> ResponseEntity) {
+    pub fn mount(&mut self, method: Method, path: String, func: fn(HashMap<String, String>, HashMap<String, String>, Req) -> ResponseEntity) {
         self.funcs.insert(Endpoint::new(method, path), func);
     }
 
@@ -66,31 +74,46 @@ impl<'s, Req> Server<Req>
                             let method = request_obj.method.clone();
 
                             println!("Calling function for method {} and path {}", method, path);
-                            let func = self.funcs.get(&Endpoint::new(method.clone(), path.clone()));
 
-                            match func {
-                                Some(f) => {
-                                    println!("Function found");
+                            let (func_key, params) = self.parse_path_return_func(&path);
 
-                                    let body = request_obj.body.clone();
-                                    let return_obj = f(request_obj.headers, Request::string_body_to_obj(body.to_owned()));
+                            println!("\n\n{:?} \n\n{:?}", func_key, params);
 
-                                    println!("Received ResponseEntity, returning");
+                            if let Some(k) = func_key {
+                                let func = self.funcs.get(&k);
 
-                                    return_obj.write(&mut stream);
+                                match func {
+                                    Some(f) => {
+                                        println!("Function found");
+    
+                                        let body = request_obj.body.clone();
+                                        let return_obj = f(request_obj.headers, params, Request::string_body_to_obj(body.to_owned()));
+    
+                                        println!("Received ResponseEntity, returning");
+    
+                                        return_obj.write(&mut stream);
+    
+                                        println!("Elapsed time: {:?}", now.elapsed());
+                                        continue;
+                                    },
+                                    None => {
+                                        println!("Function for method {} and path {} doesn't exist", method, path);
+                                        println!("Returning default 404 message");
+    
+                                        return_default_404(stream, &request_obj.path);
+    
+                                        println!("Elapsed time: {:?}", now.elapsed());
+                                        continue;
+                                    },
+                                }
+                            } else {
+                                println!("Function for method {} and path {} doesn't exist", method, path);
+                                println!("Returning default 404 message");
 
-                                    println!("Elapsed time: {:?}", now.elapsed());
-                                    continue;
-                                },
-                                None => {
-                                    println!("Function for method {} and path {} doesn't exist", method, path);
-                                    println!("Returning default 404 message");
+                                return_default_404(stream, &request_obj.path);
 
-                                    return_default_404(stream, &request_obj.path);
-
-                                    println!("Elapsed time: {:?}", now.elapsed());
-                                    continue;
-                                },
+                                println!("Elapsed time: {:?}", now.elapsed());
+                                continue;
                             }
 
                         },
@@ -106,118 +129,66 @@ impl<'s, Req> Server<Req>
             }
         }
     }
-}
 
-fn return_default_404(mut stream: TcpStream, path: &String) {
-    let formated_body = format!("{{\r\n\t \"timestamp\": \"\",\t\"status\": 404,\t\"error\": \"Not Found\",\t\"path\": \"{path}\"}}",
+    fn parse_path_return_func(&self, path: &String) -> 
+        (Option<Endpoint>, HashMap<String, String>) 
+    {
+        let path_param_regex = Regex::new("\\{([^A-Z]*?)\\}").unwrap();
+
+        let mut path_vec: Vec<String> = path.split("/").map(|p| p.to_string()).collect();
         
-    );
+        if path_vec.last().unwrap() == "" && path_vec.len() > 1 {
+            path_vec.remove(path_vec.len() - 1);
+        }
 
-    if let Err(e) = write!(
-        stream,
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\n\r\n{}",
-        StatusCode::NotFound.status_number(),
-        StatusCode::NotFound.reason_phrase(),
-        formated_body
-    ) {
-        println!("Failed to send response: {}", e);
-    }
-}
+        let mut same_vec: Option<Endpoint> = None;
+        let mut endpoint: Endpoint;
 
-fn process_buffer(buffer: &Vec<u8>) -> Vec<Vec<u8>> {
-    enum BufferSteps {
-        FindingSpace,
-        SpaceFound,
-        Json,
-    }
-    
-    let mut processed_vec: Vec<Vec<u8>> = vec![];
-    let mut temp_vec: Vec<u8> = vec![];
-    
-    let mut current_step = BufferSteps::FindingSpace;
-    
-    for (i, byte) in buffer.iter().enumerate() {
-        match current_step {
-            BufferSteps::FindingSpace => {
-                if *byte == 13 as u8 && buffer[i + 1] == 10 as u8 {
-                    current_step = BufferSteps::SpaceFound;
-                } else if *byte == 123 {
-                    current_step = BufferSteps::Json;
-                } else {
-                    temp_vec.push(*byte)
-                }
-            },
-            BufferSteps::SpaceFound => {
-                if temp_vec.len() > 0 {
-                    processed_vec.push(temp_vec.clone());
-                }
-                
-                if *byte != 13 as u8 && *byte != 10 as u8 {
-                    if *byte == 123 {
-                        temp_vec.push(*byte);
-                        current_step = BufferSteps::Json;
-                        continue;
+        let mut possible = false;
+        let mut has_param = false;
+
+        for (e, _value) in &self.funcs {
+            println!("for loop");
+            println!("{:?} {:?}", e, path_vec);
+            if e.path.len() == path_vec.len() {
+                println!("same size");
+                endpoint = e.clone();
+                for (i, s) in path_vec.iter().enumerate() {
+                    println!("entrou");
+                    let current_element = endpoint.path.get(i).unwrap();
+                    if s != current_element {
+                        if path_param_regex.is_match(current_element) {
+                            println!("regex match");
+                            possible = true;
+                            has_param = true;
+                        } else {
+                            possible = false;
+                            has_param = false;
+                        }
                     } else {
-                        temp_vec.push(*byte);
-                        current_step = BufferSteps::FindingSpace;
-                        continue;
+                        possible = true;
                     }
                 }
-                
-                temp_vec.clear();
-            },
-            BufferSteps::Json => {
-                temp_vec = buffer[(i - 1)..(buffer.len() - 1)].to_vec();
-                processed_vec.push(temp_vec.clone());
-                
-                break;
-            },
+
+                if possible {
+                    same_vec = Some(endpoint);
+                }
+            }
         }
-    }
-    
-    return processed_vec;
-}
 
-fn buffer_to_request(processed_buf: &Vec<Vec<u8>>) -> RequestObj<String> {
-    let mut path = String::new();
-    let mut method = String::new();
-    let headers: HashMap<String, String> = HashMap::new();
-    let mut body = String::new();
+        if let Some(e) = same_vec {
+            let mut params: HashMap<String, String> = HashMap::new();
+            if has_param {
+                for (i, endpoint) in e.path.iter().enumerate() {
+                    if path_param_regex.is_match(endpoint) {
+                        params.insert(endpoint.replace(&['{', '}'], ""), path_vec.get(i).unwrap().to_string());
+                    }
+                }
+            }
 
-    let processed_buf_size = &processed_buf.len() - 1;
-
-    for (i, buf) in processed_buf.iter().enumerate() {
+            return (Some(e.clone()), params)
+        }
         
-        if i == processed_buf.len() - 1 {
-            let filtered_end: Vec<(usize, &u8)> = buf.iter().enumerate().filter(|(_i, f)| **f == 125 as u8).collect();
-            let last_index: usize = filtered_end.iter().last().unwrap().0;
-
-            body = String::from_utf8_lossy(&buf[0..last_index + 1]).to_string();
-        }
-
-        if i == 0 {
-            let str = String::from_utf8_lossy(buf);
-
-            str.split(' ').into_iter().enumerate().for_each(|(i, f)| {
-                match i {
-                    0 => method = f.to_string(),
-                    1 => path = f.to_string(),
-                    _ => {}
-                }
-            });
-        } else if i < processed_buf_size {
-            let mut key = String::new();
-            let mut value = String::new();
-
-            String::from_utf8_lossy(buf).split(':').into_iter().enumerate().for_each(|(i, f)| {
-                match i {
-                    0 => key = f.trim().to_string(),
-                    1 => value = f.trim().to_string(),
-                    _ => {}
-                }
-            })
-        }
+        (None, HashMap::new())
     }
-
-    RequestObj::new(path, method, headers, body)
 }
