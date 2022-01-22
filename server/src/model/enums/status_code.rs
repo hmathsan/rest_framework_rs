@@ -10,6 +10,7 @@ pub enum StatusCode {
     BadRequest,
     NotFound,
     InternalServerError,
+    NotImplemented,
     Other((u16, String))
 }
 
@@ -24,6 +25,7 @@ impl StatusCode {
             Self::BadRequest => "BadRequest",
             Self::NotFound => "NotFound",
             Self::InternalServerError => "Internal Server Error",
+            Self::NotImplemented => "Not Implemented",
             Self::Other((_code, phrase)) => phrase
         }
     }
@@ -38,6 +40,7 @@ impl StatusCode {
             Self::BadRequest => 400,
             Self::NotFound => 404,
             Self::InternalServerError => 500,
+            Self::NotImplemented => 501,
             Self::Other((code, _phrase)) => *code
         }
     }

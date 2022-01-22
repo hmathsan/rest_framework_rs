@@ -1,8 +1,7 @@
 use std::{net::TcpListener, io::Read, time::Instant, collections::HashMap};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::{model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError, method::Method}, Request, response_entity::ResponseEntity}, server_utils::{return_default_404, process_buffer, buffer_to_request}};
+use crate::{model::{request::*, response::*, enums::{status_code::*, parse_error::ParseError, method::Method}, Request, response_entity::ResponseEntity}, server_utils::{server_utils::{process_buffer, buffer_to_request}, default_returns::{DefaultReturns, ReturnBody}}, };
 
 pub trait Handler {
     fn handle_request<T>(&mut self, request: &RequestObj<T>) -> ResponseObj<T> where T: Serialize + Deserialize<'static>;
@@ -15,8 +14,8 @@ pub trait Handler {
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone)]
 pub(in crate) struct Endpoint {
-    method: Method,
-    path: Vec<String>
+    pub(in crate) method: Method,
+    pub(in crate) path: Vec<String>
 }
 
 impl Endpoint {
@@ -97,28 +96,30 @@ impl<'s, Req> Server<Req>
                                         continue;
                                     },
                                     None => {
-                                        println!("Function for method {} and path {} doesn't exist", method, path);
-                                        println!("Returning default 404 message");
-    
-                                        return_default_404(stream, &request_obj.path);
+                                        DefaultReturns::func_not_found(&mut stream, method, path);
     
                                         println!("Elapsed time: {:?}", now.elapsed());
                                         continue;
                                     },
                                 }
                             } else {
-                                println!("Function for method {} and path {} doesn't exist", method, path);
-                                println!("Returning default 404 message");
-
-                                return_default_404(stream, &request_obj.path);
-
+                                DefaultReturns::func_not_found(&mut stream, method, path);
+    
                                 println!("Elapsed time: {:?}", now.elapsed());
                                 continue;
                             }
-
                         },
                         Err(err) => {
                             println!("Failed to read from connection: {}", err);
+
+                            DefaultReturns::internal_error(
+                                &mut stream, 
+                                Some(ReturnBody::new(
+                                    None,
+                                    String::from("A internal error ocurred while reading the request"),
+                                    String::from(format!("{}", err))
+                                ))
+                            );
                         },
                     }
                 },
@@ -130,65 +131,4 @@ impl<'s, Req> Server<Req>
         }
     }
 
-    fn parse_path_return_func(&self, path: &String) -> 
-        (Option<Endpoint>, HashMap<String, String>) 
-    {
-        let path_param_regex = Regex::new("\\{([^A-Z]*?)\\}").unwrap();
-
-        let mut path_vec: Vec<String> = path.split("/").map(|p| p.to_string()).collect();
-        
-        if path_vec.last().unwrap() == "" && path_vec.len() > 1 {
-            path_vec.remove(path_vec.len() - 1);
-        }
-
-        let mut same_vec: Option<Endpoint> = None;
-        let mut endpoint: Endpoint;
-
-        let mut possible = false;
-        let mut has_param = false;
-
-        for (e, _value) in &self.funcs {
-            println!("for loop");
-            println!("{:?} {:?}", e, path_vec);
-            if e.path.len() == path_vec.len() {
-                println!("same size");
-                endpoint = e.clone();
-                for (i, s) in path_vec.iter().enumerate() {
-                    println!("entrou");
-                    let current_element = endpoint.path.get(i).unwrap();
-                    if s != current_element {
-                        if path_param_regex.is_match(current_element) {
-                            println!("regex match");
-                            possible = true;
-                            has_param = true;
-                        } else {
-                            possible = false;
-                            has_param = false;
-                        }
-                    } else {
-                        possible = true;
-                    }
-                }
-
-                if possible {
-                    same_vec = Some(endpoint);
-                }
-            }
-        }
-
-        if let Some(e) = same_vec {
-            let mut params: HashMap<String, String> = HashMap::new();
-            if has_param {
-                for (i, endpoint) in e.path.iter().enumerate() {
-                    if path_param_regex.is_match(endpoint) {
-                        params.insert(endpoint.replace(&['{', '}'], ""), path_vec.get(i).unwrap().to_string());
-                    }
-                }
-            }
-
-            return (Some(e.clone()), params)
-        }
-        
-        (None, HashMap::new())
-    }
 }
