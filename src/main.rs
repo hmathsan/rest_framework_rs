@@ -30,6 +30,7 @@ struct TestResponse {
     test_params: String
 }
 
+// TODO: Make derive for Request
 impl Request for TestRequest {
     fn string_body_to_obj(body: String) -> Self
         where Self: serde::Serialize + serde::Deserialize<'static> + Sized + Clone {

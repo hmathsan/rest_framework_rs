@@ -114,7 +114,15 @@ impl<'s, Req> Server<Req>
     pub(in crate) fn parse_path_return_func(&self, path: &String) -> (Option<Endpoint>, HashMap<String, String>) {
         let path_param_regex = Regex::new("\\{([^A-Z]*?)\\}").unwrap();
 
-        let mut path_vec: Vec<String> = path.split("/").map(|p| p.to_string()).collect();
+        let mut query_params: HashMap<String, String> = HashMap::new();
+        let mut path_vec: Vec<String> = if path.contains('?') {
+            let path_parsed: Vec<String> = path.split('?').map(|p| p.to_string()).collect();
+            query_params = parse_query_params(path_parsed.last().unwrap().to_string());
+
+            path_parsed.first().unwrap().split("/").map(|p| p.to_string()).collect()
+        } else {
+            path.split("/").map(|p| p.to_string()).collect()
+        };
 
         if path_vec.last().unwrap() == "" && path_vec.len() > 1 {
             path_vec.remove(path_vec.len() - 1);
@@ -156,7 +164,10 @@ impl<'s, Req> Server<Req>
         }
 
         if let Some(e) = same_vec {
-            let mut params: HashMap<String, String> = HashMap::new();
+            let mut params: HashMap<String, String> = if let true = !query_params.is_empty() {
+                query_params
+            } else { HashMap::new() };
+            
             if has_param {
                 for (i, endpoint) in e.path.iter().enumerate() {
                     if path_param_regex.is_match(endpoint) {
@@ -173,4 +184,21 @@ impl<'s, Req> Server<Req>
 
         (None, HashMap::new())
     }
+
+}
+
+pub(in crate) fn parse_query_params(query: String) -> HashMap<String, String> {
+    let query_parsed: Vec<String> = query.split('&')
+        .map(|q| q.to_string()).collect();
+
+    let mut query_map: HashMap<String, String> = HashMap::new();
+    
+    for q in query_parsed {
+        let item: Vec<String> = q.split('=').map(|f| f.to_string()).collect();
+
+        query_map.insert(item.first().unwrap().to_string(), item.last().unwrap().to_string());
+    }
+
+    println!("query params: {:#?}", &query_map);
+    query_map
 }
