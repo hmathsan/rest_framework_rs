@@ -111,18 +111,15 @@ pub(in crate) fn buffer_to_request(processed_buf: &Vec<Vec<u8>>) -> RequestObj<S
 impl<'s, Req> Server<Req> 
     where Req: Request 
 {
-    pub(in crate) fn parse_path_return_func(&self, path: &String) -> (Option<Endpoint>, HashMap<String, String>) {
+    pub(in crate) fn parse_path_return_func(&self, endpoint: Endpoint) -> (Option<Endpoint>, HashMap<String, String>) {
+        let mut path_vec = endpoint.path.clone();
+        let method = endpoint.method.clone();
+
         let path_param_regex = Regex::new("\\{([^A-Z]*?)\\}").unwrap();
 
-        let mut query_params: HashMap<String, String> = HashMap::new();
-        let mut path_vec: Vec<String> = if path.contains('?') {
-            let path_parsed: Vec<String> = path.split('?').map(|p| p.to_string()).collect();
-            query_params = parse_query_params(path_parsed.last().unwrap().to_string());
-
-            path_parsed.first().unwrap().split("/").map(|p| p.to_string()).collect()
-        } else {
-            path.split("/").map(|p| p.to_string()).collect()
-        };
+        let query_params: HashMap<String, String> = if path_vec.last().unwrap().contains('?') {
+            parse_query_params(path_vec.last().unwrap().split('?').last().unwrap().to_string())
+        } else { HashMap::new() };
 
         if path_vec.last().unwrap() == "" && path_vec.len() > 1 {
             path_vec.remove(path_vec.len() - 1);
@@ -135,17 +132,12 @@ impl<'s, Req> Server<Req>
         let mut has_param = false;
 
         for (e, _value) in &self.funcs {
-            println!("for loop");
-            println!("{:?} {:?}", e, path_vec);
             if e.path.len() == path_vec.len() {
-                println!("same size");
                 endpoint = e.clone();
                 for (i, s) in path_vec.iter().enumerate() {
-                    println!("entrou");
                     let current_element = endpoint.path.get(i).unwrap();
                     if s != current_element {
                         if path_param_regex.is_match(current_element) {
-                            println!("regex match");
                             possible = true;
                             has_param = true;
                         } else {
@@ -157,8 +149,10 @@ impl<'s, Req> Server<Req>
                     }
                 }
 
-                if possible {
+                if e.method == method && possible {
                     same_vec = Some(endpoint);
+                } else {
+                    possible = false;
                 }
             }
         }
@@ -199,6 +193,5 @@ pub(in crate) fn parse_query_params(query: String) -> HashMap<String, String> {
         query_map.insert(item.first().unwrap().to_string(), item.last().unwrap().to_string());
     }
 
-    println!("query params: {:#?}", &query_map);
     query_map
 }

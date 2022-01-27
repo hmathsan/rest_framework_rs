@@ -45,7 +45,7 @@ impl<'s, Req> Server<Req>
         Self { addr, funcs: HashMap::new() }
     }
 
-    pub fn mount(&mut self, method: Method, path: String, func: fn(HashMap<String, String>, HashMap<String, String>, Req) -> ResponseEntity) {
+    pub fn mount(&mut self, (method, path, func): (Method, String, fn(HashMap<String, String>, HashMap<String, String>, Req) -> ResponseEntity)) {
         self.funcs.insert(Endpoint::new(method, path), func);
     }
 
@@ -74,13 +74,11 @@ impl<'s, Req> Server<Req>
 
                             println!("Calling function for method {} and path {}", method, path);
 
-                            let (func_key, params) = self.parse_path_return_func(&path);
-
-                            println!("\n\n{:?} \n\n{:?}", func_key, params);
+                            let (func_key, params) = self.parse_path_return_func(Endpoint::new(method.clone(), path.clone()));
 
                             if let Some(k) = func_key {
                                 let func = self.funcs.get(&k);
-
+                                
                                 match func {
                                     Some(f) => {
                                         println!("Function found");

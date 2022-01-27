@@ -1,6 +1,7 @@
 use proc_macro::{self, TokenStream};
+use proc_macro2::Ident;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{parse_macro_input, DeriveInput, Type, Token, parse::{Parser, Parse}, };
 
 // #[proc_macro_derive(Describe)]
 // pub fn describe(input: TokenStream) -> TokenStream {
