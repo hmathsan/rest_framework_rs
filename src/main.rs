@@ -1,7 +1,9 @@
+#[macro_use] extern crate macros;
+
 use std::collections::HashMap;
 
 use serde_derive::{Deserialize, Serialize};
-use server::{server::Server, model::{enums::{method::Method, status_code::StatusCode}, Request, Response, response_entity::{ResponseEntityBuilder, ResponseEntity}}};
+use server::{server::Server, model::{enums::{method::Method, status_code::StatusCode}, response_entity::{ResponseEntityBuilder, ResponseEntity}}};
 
 fn main() {
     let mut server = Server::new("127.0.0.1:8080".to_string());
@@ -19,28 +21,15 @@ fn test_get(_headers: HashMap<String, String>, _params: HashMap<String, String>,
         .build()
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Request)]
+#[request_obj]
 struct TestRequest {
     test: String
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Response)]
+#[response_obj]
 struct TestResponse {
     test: String,
     test_params: String
-}
-
-// TODO: Make derive for Request
-impl Request for TestRequest {
-    fn string_body_to_obj(body: String) -> Self
-        where Self: serde::Serialize + serde::Deserialize<'static> + Sized + Clone {
-        let b = &body[..];
-        serde_json::from_str(b).unwrap()
-    }
-}
-
-impl Response for TestResponse {
-    fn to_string_json(&self) -> String {
-        serde_json::to_string_pretty(self.clone()).unwrap()
-    }
 }
