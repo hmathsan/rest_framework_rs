@@ -8,36 +8,25 @@ use server::{server::Server, model::{enums::status_code::StatusCode, response_en
 
 fn main() {
     let mut server = Server::new("127.0.0.1:8080".to_string());
-    server.mount(get!["/teste/{id_teste}", test_get]);
-    server.mount(post!["/teste/", teste_post]);
+    server.mount(get!["/hello", hello]);
     server.run();
 }
 
-fn test_get(_headers: HashMap<String, String>, _params: HashMap<String, String>, req: TestRequest) -> ResponseEntity {
+fn hello(_headers: HashMap<String, String>, _params: HashMap<String, String>, req: HelloRequest) -> ResponseEntity {
     ResponseEntityBuilder::new()
-        .with_body(TestResponse{ 
-            test: format!("O campo test do request é igual a {}", req.test) ,
-            test_params: format!("Param id_teste recebido com o valor = {}", _params.get("id_teste").unwrap())
-        })
-        .with_status_code(StatusCode::Ok)
-        .build()
-}
-
-fn teste_post(_headers: HashMap<String, String>, _params: HashMap<String, String>, _req: TestRequest) -> ResponseEntity {
-    ResponseEntityBuilder::new()
+        .with_body(HelloResponse { message: format!("Hello, {}", req.name) })
         .with_status_code(StatusCode::Ok)
         .build()
 }
 
 #[derive(Request)]
 #[request_obj]
-struct TestRequest {
-    test: String
+struct HelloRequest {
+    name: String
 }
 
 #[derive(Response)]
 #[response_obj]
-struct TestResponse {
-    test: String,
-    test_params: String
+struct HelloResponse {
+    message: String
 }

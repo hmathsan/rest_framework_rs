@@ -59,8 +59,7 @@ impl<'s, Req> Server<Req>
             match listener.accept() {
                 Ok((mut stream, _)) => {
                     // TODO: Change byte size based on dotenv
-                    // 10485760
-                    let mut buffer: Vec<u8> = [0_u8; 4096].to_vec();
+                    let mut buffer: Vec<u8> = [0_u8; 10240].to_vec();
                     match stream.read(&mut buffer) {
                         Ok(_) => {
                             println!("Request received!");
